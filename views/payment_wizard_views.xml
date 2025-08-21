@@ -7,11 +7,11 @@
             <field name="model">payment.file.wizard</field>
             <field name="arch" type="xml">
                 <form>
-                    <group attrs="{'invisible': [('file_name', '!=', False)]}">
+                    <group invisible="file_name != False">
                         <field name="journal_id"/>
                     </group>
                     
-                    <group attrs="{'invisible': [('file_name', '=', False)]}">
+                    <group invisible="file_name == False">
                         <p>¡Archivos generados con éxito!</p>
                         <field name="file_data" filename="file_name"/>
                         <field name="file_name" invisible="1"/>
@@ -22,7 +22,7 @@
                             string="Generar Archivo(s)"
                             type="object"
                             class="btn-primary"
-                            attrs="{'invisible': [('file_name', '!=', False)]}"/>
+                            invisible="file_name != False"/>
                         
                         <button string="Cerrar" class="btn-secondary" special="cancel"/>
                     </footer>
