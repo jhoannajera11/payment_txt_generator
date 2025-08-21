@@ -9,12 +9,10 @@
             <field name="arch" type="xml">
                 
                 <xpath expr="//field[@name='property_account_payable_id']" position="after">
-                    <group string="Generación de Archivos de Pago Bancario" name="payment_txt_generator_group">
-                        <group>
-                            <field name="x_confirming_key"/>
-                            <field name="x_spei_reference"/>
-                            <field name="x_confirming_sequence" invisible="1"/>
-                        </group>
+                    <group string="Generación de Archivos de Pago Bancario" name="payment_txt_generator_group" colspan="2">
+                        <field name="x_confirming_key"/>
+                        <field name="x_spei_reference"/>
+                        <field name="x_confirming_sequence" invisible="1"/>
                     </group>
                 </xpath>
 
