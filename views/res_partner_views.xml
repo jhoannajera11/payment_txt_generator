@@ -8,7 +8,7 @@
             <field name="inherit_id" ref="base.view_partner_form"/>
             <field name="arch" type="xml">
                 
-                <xpath expr="//field[@name='property_account_payable_id']" position="after">
+                <xpath expr="//group[field[@name='property_account_payable_id']]" position="after">
                     <group string="Generación de Archivos de Pago Bancario" name="payment_txt_generator_group" colspan="2">
                         <field name="x_confirming_key"/>
                         <field name="x_spei_reference"/>
