@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+
+        <record id="view_payment_file_wizard_form" model="ir.ui.view">
+            <field name="name">payment.file.wizard.form</field>
+            <field name="model">payment.file.wizard</field>
+            <field name="arch" type="xml">
+                <form>
+                    <group attrs="{'invisible': [('file_name', '!=', False)]}">
+                        <field name="journal_id"/>
+                    </group>
+                    
+                    <group attrs="{'invisible': [('file_name', '=', False)]}">
+                        <p>¡Archivos generados con éxito!</p>
+                        <field name="file_data" filename="file_name"/>
+                        <field name="file_name" invisible="1"/>
+                    </group>
+                    
+                    <footer>
+                        <button name="action_generate_files"
+                            string="Generar Archivo(s)"
+                            type="object"
+                            class="btn-primary"
+                            attrs="{'invisible': [('file_name', '!=', False)]}"/>
+                        
+                        <button string="Cerrar" class="btn-secondary" special="cancel"/>
+                    </footer>
+                </form>
+            </field>
+        </record>
+
+        <record id="action_payment_file_wizard" model="ir.actions.act_window">
+            <field name="name">Pagar y Generar Archivo Bancario</field>
+            <field name="res_model">payment.file.wizard</field>
+            <field name="view_mode">form</field>
+            <field name="target">new</field>
+            <field name="binding_model_id" ref="account.model_account_move"/>
+            <field name="binding_view_types">list</field>
+        </record>
+
+    </data>
+</odoo>
