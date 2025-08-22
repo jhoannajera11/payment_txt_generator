@@ -2,46 +2,18 @@
 <odoo>
     <data>
 
-        <record id="view_payment_file_wizard_form" model="ir.ui.view">
-            <field name="name">payment.file.wizard.form</field>
-            <field name="model">payment.file.wizard</field>
+        <record id="view_account_payment_register_form_inherit_payment_generator" model="ir.ui.view">
+            <field name="name">account.payment.register.form.inherit.payment.generator</field>
+            <field name="model">account.payment.register</field>
+            <field name="inherit_id" ref="account.view_account_payment_register_form"/>
             <field name="arch" type="xml">
-                <form>
-                    <group invisible="file_name != False">
-                        <field name="journal_id"/>
-                    </group>
-                    <group invisible="file_name == False">
-                        <p>¡Archivos generados con éxito!</p>
-                        <field name="file_data" filename="file_name"/>
-                        <field name="file_name" invisible="1"/>
-                    </group>
-                    <footer>
-                        <button name="action_generate_files"
-                            string="Generar Archivo(s)"
+                <xpath expr="//button[@name='action_create_payments']" position="before">
+                    <button name="action_create_payments_and_generate_file"
+                            string="Crear Pago y Generar Archivo"
                             type="object"
                             class="btn-primary"
-                            invisible="file_name != False"/>
-                        <button string="Cerrar" class="btn-secondary" special="cancel"/>
-                    </footer>
-                </form>
-            </field>
-        </record>
-
-        <record id="action_payment_file_wizard" model="ir.actions.act_window">
-            <field name="name">Pagar y Generar Archivo Bancario</field>
-            <field name="res_model">payment.file.wizard</field>
-            <field name="view_mode">form</field>
-            <field name="target">new</field>
-        </record>
-
-        <record id="action_server_launch_payment_wizard" model="ir.actions.server">
-            <field name="name">Pagar y Generar Archivo Bancario</field>
-            <field name="model_id" ref="account.model_account_move"/>
-            <field name="binding_model_id" ref="account.model_account_move"/>
-            <field name="binding_view_types">list,kanban</field>
-            <field name="state">code</field>
-            <field name="code">
-                action = env.ref('payment_txt_generator.action_payment_file_wizard').read()[0]
+                            data-hotkey="g"/>
+                </xpath>
             </field>
         </record>
 

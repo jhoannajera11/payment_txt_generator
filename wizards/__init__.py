@@ -1,3 +1,3 @@
 # -*- coding: utf-8 -*-
 
-from . import payment_file_wizard
+from . import account_payment_register
