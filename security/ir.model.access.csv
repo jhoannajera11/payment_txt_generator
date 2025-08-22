@@ -1,3 +1,2 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
 access_res_partner_payment_fields,access.res.partner.payment.fields,base.model_res_partner,account.group_account_manager,1,1,1,1
-access_payment_file_wizard,access.payment.file.wizard,model_payment_file_wizard,account.group_account_manager,1,1,1,1
