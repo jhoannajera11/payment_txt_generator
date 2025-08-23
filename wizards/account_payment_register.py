@@ -14,7 +14,7 @@ class AccountPaymentRegister(models.TransientModel):
     # --- El diccionario de bancos y las funciones de formato no cambian ---
     BANK_CODE_MAP = {
         'BANXICO': 'BANCO', 'BANCOMEXT': 'BCEXT', 'BANOBRAS': 'BOBRA', 'BANJERCITO': 'BEJER',
-        'NACIONAL FINANANCIERA': 'NAFIN', 'BANCO DEL BIENESTAR': 'BANSE', 'HIPOTECARIA FEDERAL': 'HIFED',
+        'NACIONAL FINANCIERA': 'NAFIN', 'BANCO DEL BIENESTAR': 'BANSE', 'HIPOTECARIA FEDERAL': 'HIFED',
         'BANAMEX': 'BANAM', 'BBVA BANCOMER': 'BACOM', 'BANCO SANTANDER': 'BANME',
         'HSBC': 'BITAL', 'BAJIO': 'BAJIO', 'INBURSA': 'BINBU', 'SCOTIA BANK': 'COMER',
         'BANREGIO': 'BANRE', 'INVEX': 'BINVE', 'BANSI': 'BANSI', 'AFIRME': 'BAFIR',
@@ -26,7 +26,7 @@ class AccountPaymentRegister(models.TransientModel):
         'ACTINVER': 'PRUDE', 'INTERCAM BANCO': 'REGIO', 'BANCOPPEL': 'COPEL',
         'ABC CAPITAL': 'AMIGO', 'CONSUBANCO': 'FACIL', 'VOLKSWAGEN BANK': 'VOLKS',
         'CI BANCO': 'CONSU', 'BBASE': 'BBASE', 'BANKAOOL': 'AGROF', 'PAGATODO': 'PTODO',
-        'INMOBILIARIO': 'INMOB', 'DONDE': 'DONDE', 'BANCREA': 'BCREA', 'BANCO FINTERRA': 'FINTE',
+        'INMOBILIario': 'INMOB', 'DONDE': 'DONDE', 'BANCREA': 'BCREA', 'BANCO FINTERRA': 'FINTE',
         'ICBC': 'ICBCH', 'SABADELL': 'SABAD', 'SHINAN': 'SHINH', 'MIZUHO BANK': 'MISUO',
         'BANCO S3': 'BCOS3', 'MONEX CASA DE BOLSA': '90600', 'GBM CASA DE BOLSA': '90601',
         'MASARI CASA DE BOLSA': '90602', 'VALUE CASA DE BOLSA': '90605', 'ESTRUCTURADORES': '90606',
@@ -71,38 +71,25 @@ class AccountPaymentRegister(models.TransientModel):
     def _format_spei_line(self, payment):
         partner = payment.partner_id
         bank_account, bank = self._get_partner_bank_info(partner)
-        bank_code_str = self.BANK_CODE_MAP.get(bank.name.upper(), '')
+        bank_code_str = self.BANK_CODE_MAP.get((bank.name or '').upper(), '')
         if len(bank_code_str) == 4: bank_code_str = self._pad_right(bank_code_str, 5)
         fields = ['LTX07', self._pad_right('65501571237', 18), self._pad_right(bank_account.acc_number, 20), self._pad_right(bank_code_str, 5), self._pad_right(partner.name, 40), '0100', self._pad_left_zeros(int(payment.amount * 100), 18), '01001', self._pad_right(partner.x_spei_reference, 40), ' ' * 7, self._pad_right(partner.email, 40), '1', ' ' * 8]
         return ''.join(fields)
 
     def action_create_payments_and_generate_file(self):
         """
-        Esta función ahora solo establece una marca en el contexto y llama a la función
-        original de Odoo. La lógica real se ha movido a '_create_payments'.
+        Esta es la función que se llama desde el botón.
+        Ahora es la responsable de todo el flujo.
         """
-        # Añadimos una 'bandera' en el contexto para saber que venimos de nuestro botón.
-        return self.with_context(generate_payment_file=True).action_create_payments()
+        # 1. Llama a la función de bajo nivel de Odoo para crear los pagos.
+        # Esta función SIEMPRE devuelve los registros de pago creados.
+        payments_to_process = self._create_payments()
 
-    def _create_payments(self):
-        """
-        Heredamos esta función, que es la que realmente crea los pagos.
-        Aquí es donde Odoo nos devuelve una referencia directa a los pagos creados.
-        """
-        # Primero, llamamos a la función original de Odoo para que cree los pagos.
-        payments = super()._create_payments()
-        
-        # Revisamos si nuestra 'bandera' está en el contexto. Si no lo está,
-        # significa que el usuario presionó el botón normal "Crear Pago", y no hacemos nada más.
-        if not self.env.context.get('generate_payment_file'):
-            return payments
-
-        # Si la bandera existe, procedemos con la generación de archivos.
-        payments_to_process = payments
         if not payments_to_process:
-            return payments
-
-        # Reutiliza la lógica de agrupación y generación de archivos
+            # Si no se crearon pagos, simplemente cierra la ventana.
+            return {'type': 'ir.actions.act_window_close'}
+        
+        # 2. Reutiliza la lógica de agrupación y generación de archivos
         confirming_payments = payments_to_process.filtered(lambda p: p.partner_id.x_confirming_key)
         transfer_payments = payments_to_process - confirming_payments
         
@@ -122,9 +109,9 @@ class AccountPaymentRegister(models.TransientModel):
             generated_files['transferencias.txt'] = "\n".join(lines)
             
         if not generated_files:
-            return payments
+            return {'type': 'ir.actions.act_window_close'}
 
-        # Prepara el archivo (o archivos) para la descarga
+        # 3. Prepara el archivo (o archivos) para la descarga
         if len(generated_files) == 1:
             filename, content = list(generated_files.items())[0]
             file_data = base64.b64encode(content.encode('utf-8'))
@@ -136,16 +123,14 @@ class AccountPaymentRegister(models.TransientModel):
             filename = 'paquete_de_pagos.zip'
             file_data = base64.b64encode(zip_buffer.getvalue())
 
-        # Crea un adjunto y devuelve una acción de descarga
+        # 4. Crea un adjunto y devuelve la acción de descarga
         attachment = self.env['ir.attachment'].create({
             'name': filename,
             'datas': file_data,
             'type': 'binary',
-            'res_model': self._name,
-            'res_id': self.id,
+            'mimetype': 'application/zip' if filename.endswith('.zip') else 'text/plain',
         })
         
-        # En lugar de devolver los pagos, devolvemos la acción de descarga.
         return {
             'type': 'ir.actions.act_url',
             'url': f'/web/content/{attachment.id}?download=true',
