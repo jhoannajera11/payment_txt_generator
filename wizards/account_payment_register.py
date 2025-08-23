@@ -11,10 +11,10 @@ from odoo.exceptions import UserError
 class AccountPaymentRegister(models.TransientModel):
     _inherit = 'account.payment.register'
 
-    # Diccionario de Bancos y funciones de formato (copiadas del wizard anterior)
+    # --- El diccionario de bancos y las funciones de formato no cambian ---
     BANK_CODE_MAP = {
         'BANXICO': 'BANCO', 'BANCOMEXT': 'BCEXT', 'BANOBRAS': 'BOBRA', 'BANJERCITO': 'BEJER',
-        'NACIONAL FINANCIERA': 'NAFIN', 'BANCO DEL BIENESTAR': 'BANSE', 'HIPOTECARIA FEDERAL': 'HIFED',
+        'NACIONAL FINANANCIERA': 'NAFIN', 'BANCO DEL BIENESTAR': 'BANSE', 'HIPOTECARIA FEDERAL': 'HIFED',
         'BANAMEX': 'BANAM', 'BBVA BANCOMER': 'BACOM', 'BANCO SANTANDER': 'BANME',
         'HSBC': 'BITAL', 'BAJIO': 'BAJIO', 'INBURSA': 'BINBU', 'SCOTIA BANK': 'COMER',
         'BANREGIO': 'BANRE', 'INVEX': 'BINVE', 'BANSI': 'BANSI', 'AFIRME': 'BAFIR',
@@ -78,28 +78,31 @@ class AccountPaymentRegister(models.TransientModel):
 
     def action_create_payments_and_generate_file(self):
         """
-        Esta es la nueva función. Primero crea los pagos usando la lógica de Odoo
-        y luego usa esos pagos para generar y devolver los archivos TXT.
+        Esta función ahora solo establece una marca en el contexto y llama a la función
+        original de Odoo. La lógica real se ha movido a '_create_payments'.
         """
-        # 1. Ejecuta la acción original de Odoo para crear los pagos.
-        # El resultado (action) contiene los pagos recién creados si los hay.
-        action = self.action_create_payments()
+        # Añadimos una 'bandera' en el contexto para saber que venimos de nuestro botón.
+        return self.with_context(generate_payment_file=True).action_create_payments()
+
+    def _create_payments(self):
+        """
+        Heredamos esta función, que es la que realmente crea los pagos.
+        Aquí es donde Odoo nos devuelve una referencia directa a los pagos creados.
+        """
+        # Primero, llamamos a la función original de Odoo para que cree los pagos.
+        payments = super()._create_payments()
         
-        # Odoo 18 en adelante, la acción de creación de pagos devuelve un diccionario de acción
-        # Los pagos creados se encuentran en el contexto de esa acción
-        if not action.get('context'):
-             return action # Si no hay contexto, cerramos la ventana como haría Odoo.
+        # Revisamos si nuestra 'bandera' está en el contexto. Si no lo está,
+        # significa que el usuario presionó el botón normal "Crear Pago", y no hacemos nada más.
+        if not self.env.context.get('generate_payment_file'):
+            return payments
 
-        payment_ids = action['context'].get('payment_ids', [])
-        if not payment_ids:
-            # A veces los pagos están en 'active_ids'
-            payment_ids = action['context'].get('active_ids', [])
-
-        payments_to_process = self.env['account.payment'].browse(payment_ids)
+        # Si la bandera existe, procedemos con la generación de archivos.
+        payments_to_process = payments
         if not payments_to_process:
-            return action # Si no se crearon pagos, no hacemos nada más.
-        
-        # 2. Reutiliza la lógica de agrupación y generación de archivos
+            return payments
+
+        # Reutiliza la lógica de agrupación y generación de archivos
         confirming_payments = payments_to_process.filtered(lambda p: p.partner_id.x_confirming_key)
         transfer_payments = payments_to_process - confirming_payments
         
@@ -119,9 +122,9 @@ class AccountPaymentRegister(models.TransientModel):
             generated_files['transferencias.txt'] = "\n".join(lines)
             
         if not generated_files:
-            return action # Si por alguna razón no se generó ningún archivo, continúa el flujo normal.
+            return payments
 
-        # 3. Prepara el archivo (o archivos) para la descarga
+        # Prepara el archivo (o archivos) para la descarga
         if len(generated_files) == 1:
             filename, content = list(generated_files.items())[0]
             file_data = base64.b64encode(content.encode('utf-8'))
@@ -133,14 +136,16 @@ class AccountPaymentRegister(models.TransientModel):
             filename = 'paquete_de_pagos.zip'
             file_data = base64.b64encode(zip_buffer.getvalue())
 
-        # 4. Crea un adjunto y devuelve la acción de descarga
+        # Crea un adjunto y devuelve una acción de descarga
         attachment = self.env['ir.attachment'].create({
             'name': filename,
             'datas': file_data,
             'type': 'binary',
-            'mimetype': 'application/zip' if filename.endswith('.zip') else 'text/plain',
+            'res_model': self._name,
+            'res_id': self.id,
         })
         
+        # En lugar de devolver los pagos, devolvemos la acción de descarga.
         return {
             'type': 'ir.actions.act_url',
             'url': f'/web/content/{attachment.id}?download=true',
