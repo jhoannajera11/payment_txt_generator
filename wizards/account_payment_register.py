@@ -69,34 +69,14 @@ class AccountPaymentRegister(models.TransientModel):
         return ''.join(fields)
 
     def _format_spei_line(self, payment):
-        """Genera una línea para el archivo de Transferencias SPEI (Layout 3)."""
         partner = payment.partner_id
         bank_account, bank = self._get_partner_bank_info(partner)
-        
         bank_code_str = self.BANK_CODE_MAP.get((bank.name or '').upper(), '')
-        if len(bank_code_str) == 4:
-            bank_code_str = self._pad_right(bank_code_str, 5)
-
-        # La cuenta CLABE ahora viene del campo específico de la localización mexicana
+        if len(bank_code_str) == 4: bank_code_str = self._pad_right(bank_code_str, 5)
         clabe_account = bank_account.l10n_mx_edi_clabe or bank_account.acc_number
         if not clabe_account:
              raise UserError(_("La cuenta bancaria del proveedor '%s' no tiene un número de cuenta o CLABE configurado.") % partner.name)
-
-        fields = [
-            'LTX05',  # <-- CAMBIO 1: Código de Layout corregido a LTX05.
-            self._pad_right('65501571237', 18),
-            self._pad_right(clabe_account, 20),  # <-- CAMBIO 2: Se usa el campo de la CLABE.
-            self._pad_right(bank_code_str, 5),
-            self._pad_right(partner.name, 40),
-            '0100',
-            self._pad_left_zeros(int(payment.amount * 100), 18),
-            '01001',
-            self._pad_right(partner.x_spei_reference, 40),
-            ' ' * 7,
-            self._pad_right(partner.email, 40),
-            '1',
-            ' ' * 8,
-        ]
+        fields = ['LTX05', self._pad_right('65501571237', 18), self._pad_right(clabe_account, 20), self._pad_right(bank_code_str, 5), self._pad_right(partner.name, 40), '0100', self._pad_left_zeros(int(payment.amount * 100), 18), '01001', self._pad_right(partner.x_spei_reference, 40), ' ' * 7, self._pad_right(partner.email, 40), '1', ' ' * 8]
         return ''.join(fields)
 
     def action_create_payments_and_generate_file(self):
@@ -111,7 +91,7 @@ class AccountPaymentRegister(models.TransientModel):
         generated_files = {}
         if confirming_payments:
             lines = [self._format_confirming_line(p) for p in confirming_payments]
-            generated_files['confirming.txt'] = "\n".join(lines)
+            generated_files['confirming.txt'] = (lines, "text/plain")
         
         if transfer_payments:
             lines = []
@@ -121,32 +101,58 @@ class AccountPaymentRegister(models.TransientModel):
                     lines.append(self._format_santander_line(payment))
                 else:
                     lines.append(self._format_spei_line(payment))
-            generated_files['transferencias.txt'] = "\n".join(lines)
+            generated_files['transferencias.txt'] = (lines, "text/plain")
             
         if not generated_files:
             return {'type': 'ir.actions.act_window_close'}
-
-        if len(generated_files) == 1:
-            filename, content = list(generated_files.items())[0]
+        
+        # --- NUEVA LÓGICA PARA ADJUNTAR ARCHIVOS ---
+        attachment_ids = {}
+        for filename, (lines, mimetype) in generated_files.items():
+            content = "\n".join(lines)
             file_data = base64.b64encode(content.encode('utf-8'))
+            attachment = self.env['ir.attachment'].create({
+                'name': filename,
+                'datas': file_data,
+                'type': 'binary',
+                'mimetype': mimetype,
+            })
+            attachment_ids[filename] = attachment.id
+        
+        # Adjuntar el archivo de confirming a sus pagos
+        if 'confirming.txt' in attachment_ids:
+            for payment in confirming_payments:
+                payment.message_post(body=_("Archivo de pago (Confirming) generado."), attachment_ids=[attachment_ids['confirming.txt']])
+        
+        # Adjuntar el archivo de transferencias a sus pagos
+        if 'transferencias.txt' in attachment_ids:
+            for payment in transfer_payments:
+                payment.message_post(body=_("Archivo de pago (Transferencia) generado."), attachment_ids=[attachment_ids['transferencias.txt']])
+        
+        # --- PREPARAR ARCHIVO DE DESCARGA (Lógica igual a antes) ---
+        if len(attachment_ids) == 1:
+            attachment_id = list(attachment_ids.values())[0]
+            return {
+                'type': 'ir.actions.act_url',
+                'url': f'/web/content/{attachment_id}?download=true',
+                'target': 'self',
+            }
         else:
             zip_buffer = io.BytesIO()
             with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
-                for filename, content in generated_files.items():
-                    zf.writestr(filename, content)
-            filename = 'paquete_de_pagos.zip'
-            file_data = base64.b64encode(zip_buffer.getvalue())
-
-        attachment = self.env['ir.attachment'].create({
-            'name': filename,
-            'datas': file_data,
-            'type': 'binary',
-            'res_model': self._name,
-            'res_id': self.id,
-        })
-        
-        return {
-            'type': 'ir.actions.act_url',
-            'url': f'/web/content/{attachment.id}?download=true',
-            'target': 'self',
-        }
+                for attachment_id in attachment_ids.values():
+                    attachment = self.env['ir.attachment'].browse(attachment_id)
+                    zf.writestr(attachment.name, base64.b64decode(attachment.datas))
+            
+            zip_data = base64.b64encode(zip_buffer.getvalue())
+            zip_attachment = self.env['ir.attachment'].create({
+                'name': 'paquete_de_pagos.zip',
+                'datas': zip_data,
+                'type': 'binary',
+                'mimetype': 'application/zip',
+            })
+            return {
+                'type': 'ir.actions.act_url',
+                'url': f'/web/content/{zip_attachment.id}?download=true',
+                'target': 'self',
+            }
