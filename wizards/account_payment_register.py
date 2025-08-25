@@ -96,7 +96,8 @@ class AccountPaymentRegister(models.TransientModel):
         if transfer_payments:
             lines = []
             for payment in transfer_payments:
-                _, bank = self._get_partner_bank_info(payment.partner_id)
+                # CAMBIO: Renombramos la variable '_' a 'bank_account' para evitar conflictos.
+                bank_account, bank = self._get_partner_bank_info(payment.partner_id)
                 if bank.name and 'SANTANDER' in bank.name.upper():
                     lines.append(self._format_santander_line(payment))
                 else:
@@ -106,7 +107,6 @@ class AccountPaymentRegister(models.TransientModel):
         if not generated_files:
             return {'type': 'ir.actions.act_window_close'}
         
-        # --- NUEVA LÓGICA PARA ADJUNTAR ARCHIVOS ---
         attachment_ids = {}
         for filename, (lines, mimetype) in generated_files.items():
             content = "\n".join(lines)
@@ -119,17 +119,14 @@ class AccountPaymentRegister(models.TransientModel):
             })
             attachment_ids[filename] = attachment.id
         
-        # Adjuntar el archivo de confirming a sus pagos
         if 'confirming.txt' in attachment_ids:
             for payment in confirming_payments:
                 payment.message_post(body=_("Archivo de pago (Confirming) generado."), attachment_ids=[attachment_ids['confirming.txt']])
         
-        # Adjuntar el archivo de transferencias a sus pagos
         if 'transferencias.txt' in attachment_ids:
             for payment in transfer_payments:
                 payment.message_post(body=_("Archivo de pago (Transferencia) generado."), attachment_ids=[attachment_ids['transferencias.txt']])
         
-        # --- PREPARAR ARCHIVO DE DESCARGA (Lógica igual a antes) ---
         if len(attachment_ids) == 1:
             attachment_id = list(attachment_ids.values())[0]
             return {
